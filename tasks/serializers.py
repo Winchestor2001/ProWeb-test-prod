@@ -1,14 +1,27 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
-from .models import Task
-
+from .models import Task, Comment
 from django.utils import timezone
+from django.contrib.auth.password_validation import validate_password
+
+
+class CommentSerializer(serializers.ModelSerializer):
+    user = serializers.CharField(source='user.username', read_only=True)
+
+    class Meta:
+        model = Comment
+        fields = ['id', 'text', 'user', 'created_at']
+        read_only_fields = ['id', 'created_at', 'task', 'user']
 
 
 class TaskSerializer(serializers.ModelSerializer):
+    comments = CommentSerializer(many=True, read_only=True)
+    user = serializers.CharField(source='user.username', read_only=True)
+
     class Meta:
         model = Task
-        fields = '__all__'
+        fields = ['id', 'title', 'description', 'status', 'due_date', 'created_at', 'updated_at', 'comments', 'user']
+        read_only_fields = ['id', 'created_at', 'updated_at']
 
     def validate_due_date(self, value):
         if value < timezone.now().date():
@@ -17,7 +30,8 @@ class TaskSerializer(serializers.ModelSerializer):
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
+    password = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'},
+                                     validators=[validate_password])
     password_confirm = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
 
     class Meta:
@@ -25,20 +39,12 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         fields = ['username', 'password', 'password_confirm']
 
     def validate(self, data):
-        """
-        Проверяем, что пароли совпадают.
-        """
         if data['password'] != data['password_confirm']:
             raise serializers.ValidationError("Passwords do not match.")
         return data
 
     def create(self, validated_data):
-        """
-        Создаем нового пользователя с указанным паролем.
-        """
-        user = User(
-            username=validated_data['username'],
-        )
-        user.set_password(validated_data['password'])  # Устанавливаем пароль
+        user = User(username=validated_data['username'])
+        user.set_password(validated_data['password'])
         user.save()
         return user
